@@ -23,6 +23,97 @@ from core.vectorstore import build_index
 load_dotenv()
 st.set_page_config(page_title="Exam Prep Assistant", page_icon="📚", layout="wide")
 
+# ---------------------------------------------------------------- frontend theme
+st.markdown("""
+<style>
+.stApp { background:#F5F3ED; color:#29352E; font-family:"Inter","Segoe UI",sans-serif; }
+[data-testid="stMain"] { background:#F5F3ED; }
+.block-container { padding-top:2.2rem; padding-bottom:3rem; max-width:1450px; }
+
+h1 { color:#304B3C !important; font-size:2.35rem !important; font-weight:750 !important; letter-spacing:-1.2px; }
+h2 { color:#3B5947 !important; font-weight:700 !important; letter-spacing:-.5px; }
+h3,h4 { color:#425D4B !important; font-weight:650 !important; }
+p,li,label { color:#445148; }
+[data-testid="stCaptionContainer"] { color:#7B897D; }
+
+/* Sidebar */
+section[data-testid="stSidebar"] { background:#E4E9DF; border-right:1px solid #D4DDD0; }
+section[data-testid="stSidebar"] > div { padding-top:1.5rem; }
+section[data-testid="stSidebar"] h1 { color:#304B3C !important; font-size:1.55rem !important; letter-spacing:-.6px; }
+section[data-testid="stSidebar"] h2,section[data-testid="stSidebar"] h3 { color:#526B58 !important; }
+section[data-testid="stSidebar"] p,section[data-testid="stSidebar"] label,section[data-testid="stSidebar"] span { color:#45584A; }
+
+/* Buttons */
+.stButton > button,.stDownloadButton > button {
+    background:#526B58 !important; color:#FFF !important; border:1px solid #526B58 !important;
+    border-radius:10px !important; padding:.55rem 1rem !important; font-weight:600 !important;
+    transition:all .2s ease;
+}
+.stButton > button:hover,.stDownloadButton > button:hover {
+    background:#3D5744 !important; border-color:#3D5744 !important; transform:translateY(-1px);
+    box-shadow:0 4px 12px rgba(57,82,63,.12);
+}
+.stButton > button:disabled { background:#DCE3D8 !important; color:#89978A !important; border-color:#DCE3D8 !important; }
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] { background:#E8EAE3; padding:6px; border-radius:12px; gap:6px; }
+.stTabs [data-baseweb="tab"] { background:transparent; border-radius:9px; color:#657567; font-weight:600; padding:10px 18px; }
+.stTabs [aria-selected="true"] { background:#FFF !important; color:#405D47 !important; box-shadow:0 2px 6px rgba(40,60,45,.07); }
+.stTabs [data-testid="stTabHighlight"],.stTabs [data-baseweb="tab-highlight"] { background:transparent; }
+
+/* Metrics */
+[data-testid="stMetric"] { background:#FFF; border:1px solid #E5E8DF; border-radius:14px; padding:18px 20px; box-shadow:0 3px 12px rgba(45,65,48,.035); }
+[data-testid="stMetricLabel"] { color:#778579 !important; font-weight:600; }
+[data-testid="stMetricValue"] { color:#3D5B45 !important; font-weight:750; }
+
+/* Containers and expanders */
+[data-testid="stVerticalBlockBorderWrapper"] { background:#FFF; border:1px solid #E5E8DF !important; border-radius:14px; }
+[data-testid="stExpander"] { background:#FFF; border:1px solid #E1E6DC; border-radius:12px; overflow:hidden; }
+[data-testid="stExpander"] summary { color:#425D4B; font-weight:600; }
+
+/* Inputs */
+.stTextInput input,.stTextArea textarea,[data-testid="stChatInput"] textarea {
+    background:#FFF !important; color:#29352E !important; border:1px solid #D9E1D5 !important; border-radius:10px !important;
+}
+.stTextInput input:focus,.stTextArea textarea:focus { border-color:#8AA18A !important; box-shadow:0 0 0 1px #8AA18A !important; }
+[data-baseweb="select"] > div { background:#FFF !important; border-color:#D9E1D5 !important; border-radius:10px !important; }
+[data-testid="stFileUploader"] { background:#FFF; border:1px dashed #B7C6B3; border-radius:14px; padding:12px; }
+[data-testid="stFileUploader"] section { background:transparent; }
+
+/* Chat */
+[data-testid="stChatMessage"] { background:#FFF; border:1px solid #E5E8DF; border-radius:14px; padding:12px 16px; margin-bottom:12px; }
+[data-testid="stChatInput"] { background:#FFF; border:1px solid #D9E1D5; border-radius:16px; }
+
+/* Tables */
+[data-testid="stDataFrame"],[data-testid="stTable"] { border:1px solid #E1E6DC; border-radius:12px; overflow:hidden; }
+
+/* Other controls */
+hr { border-color:#DDE3D8 !important; }
+[data-testid="stCheckbox"] label,[data-testid="stToggle"] label { color:#4C604F !important; }
+[data-testid="stSlider"] [role="slider"] { background:#526B58; }
+[data-testid="stAlert"] { border-radius:12px; }
+
+/* Premium landing dashboard */
+.hero-wrap { background:linear-gradient(125deg,#F8F7F0 0%,#E8EEE3 58%,#DCE8D9 100%); border:1px solid #DCE5D8; border-radius:24px; padding:42px 46px 36px; margin:6px 0 28px; position:relative; overflow:hidden; }
+.hero-wrap:after { content:""; position:absolute; width:280px;height:280px;border:1px solid rgba(83,117,88,.14);border-radius:50%;right:-75px;top:-90px;box-shadow:0 0 0 28px rgba(83,117,88,.035),0 0 0 58px rgba(83,117,88,.025); }
+.hero-eyebrow { color:#71866F; font-size:.72rem; letter-spacing:2.6px; font-weight:800; margin-bottom:18px; }
+.hero-title { color:#294735!important; font-size:3.15rem!important; line-height:1.08!important; letter-spacing:-2px!important; margin:0 0 14px!important; }
+.hero-title span { color:#789477; }
+.hero-sub { color:#667768!important; font-size:1.05rem; margin-bottom:22px; }
+.hero-tags { display:flex; gap:10px; flex-wrap:wrap; }
+.hero-tags span { background:rgba(255,255,255,.68); border:1px solid #D8E2D4; color:#536B55; border-radius:999px; padding:8px 13px; font-size:.78rem; font-weight:600; }
+.feature-card { background:#FFFDF8; border:1px solid #E5E9DF; border-radius:18px; padding:24px 22px 22px; min-height:225px; box-shadow:0 8px 24px rgba(52,76,55,.045); transition:transform .2s,box-shadow .2s; }
+.feature-icon { width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:#E8EFE4;color:#557653;border-radius:13px;font-size:1.25rem;margin-bottom:18px; }
+.feature-card h3 { color:#365440!important;font-size:1.12rem!important;margin:0 0 9px!important; }
+.feature-card p { color:#788477;font-size:.91rem;line-height:1.6; }
+.feature-label { color:#8A9A84;font-size:.66rem;font-weight:800;letter-spacing:1.5px; }
+/* Scrollbar */
+::-webkit-scrollbar { width:8px; }
+::-webkit-scrollbar-thumb { background:#C7D2C3; border-radius:8px; }
+::-webkit-scrollbar-track { background:#F5F3ED; }
+</style>
+""", unsafe_allow_html=True)
+
 DEFAULTS = {
     "pages": [], "chunks": [], "store": None, "keyphrases": {}, "ai_topics": {},
     "extra": {}, "pyqs": [], "messages": [], "analysis": None, "paper": None,
@@ -70,12 +161,12 @@ def active_llm():
 def need_llm_message() -> None:
     info = PROVIDERS[S.provider]
     st.info(f"Add your **{S.provider}** API key in the sidebar to use this. "
-            f"Free key: {info['key_url']}  \nNo key? Choose *Hugging Face local* (slower, offline).")
+            f"Free key: {info['key_url']}  \\nNo key? Choose *Hugging Face local* (slower, offline).")
 
 
 def catalog() -> str:
     by_src = group_by_source(S.pages)
-    return "\n".join(
+    return "\\n".join(
         f"- {src} ({len(pages)} pages). Key terms: "
         f"{', '.join(p for p, _ in S.keyphrases.get(src, [])[:8])}"
         for src, pages in by_src.items())
@@ -96,8 +187,8 @@ def process_notes(files) -> None:
             return
         st.write(f"2/4 Splitting {len(pages)} pages into chunks")
         chunks = split_documents(pages)
-        st.write(f"3/4 Embedding {len(chunks)} chunks into a FAISS vector store")
         store = build_index(chunks)
+        st.write(f"3/4 Embedding {len(chunks)} chunks into a FAISS vector store")
         st.write("4/4 Finding key phrases (TF-IDF + embeddings)")
         keyphrases = {src: extract_keyphrases(cs) for src, cs in group_by_source(chunks).items()}
         S.pages, S.chunks, S.store, S.keyphrases, S.warnings = pages, chunks, store, keyphrases, warnings
@@ -111,7 +202,7 @@ def process_pyqs(files) -> None:
     questions: list[PYQuestion] = []
     for f in files:
         try:
-            text = "\n".join(p.page_content for p in load_pdf(f.name, f.getvalue()))
+            text = "\\n".join(p.page_content for p in load_pdf(f.name, f.getvalue()))
         except Exception as exc:
             st.warning(f"Could not read {f.name}: {exc}")
             continue
@@ -121,7 +212,7 @@ def process_pyqs(files) -> None:
                        "on the Exam predictor tab.")
         questions += found
     S.pyqs = questions
-    S.pyq_version += 1          # fresh table, so old edits don't apply to new papers
+    S.pyq_version += 1
     S.analysis, S.paper, S.answers = None, None, {}
 
 
@@ -136,8 +227,6 @@ with st.sidebar:
     st.text_input("Model name", value=info["model"], key=f"model::{S.provider}")
     S.model = S[f"model::{S.provider}"]
     if info["key_env"]:
-        # A key from .env stays on the server: it is never put into the page,
-        # so nobody who opens the app in a browser can read it.
         env_key = os.getenv(info["key_env"], "")
         typed = st.text_input("API key", type="password", key=f"key::{S.provider}",
                               placeholder="Using the key from .env" if env_key else "Paste your key",
@@ -180,24 +269,33 @@ for w in S.warnings:
     st.warning(w)
 
 # ---------------------------------------------------------------- main
-st.title("Exam Prep Assistant")
+st.markdown("""
+<div class="hero-wrap">
+  <div class="hero-eyebrow">YOUR PERSONAL STUDY SPACE</div>
+  <h1 class="hero-title">Study smarter.<br><span>Walk in confident.</span></h1>
+  <p class="hero-sub">Your notes, your syllabus, your exam strategy — all in one place.</p>
+  <div class="hero-tags"><span>✦ AI-powered learning</span><span>⌁ Notes-grounded answers</span><span>↗ Exam insights</span></div>
+</div>
+""", unsafe_allow_html=True)
 if not S.keyphrases:
-    st.markdown(
-        "Upload your course PDFs and this assistant will:\n"
-        "- **Chat** — answer questions from *your* notes, with page references\n"
-        "- **Main topics** — list the key topics of any PDF\n"
-        "- **Exam predictor** — compare your notes with previous year papers and predict "
-        "likely questions\n\n"
-        "👈 Start in the sidebar: pick a model, upload notes, click **Process notes**.")
+    st.markdown("### Get started")
+    st.markdown("Upload your lecture notes in the sidebar and press **Process notes**. Your study workspace will unlock here.")
+    a, b, c = st.columns(3)
+    with a:
+        st.markdown('<div class="feature-card"><div class="feature-icon">✦</div><h3>Chat with notes</h3><p>Ask questions and get answers grounded in your PDFs, with page references.</p><span class="feature-label">LEARN & CLARIFY</span></div>', unsafe_allow_html=True)
+    with b:
+        st.markdown('<div class="feature-card"><div class="feature-icon">⌁</div><h3>Main topics</h3><p>Extract key phrases and generate clear summaries of important concepts.</p><span class="feature-label">REVISE & RECALL</span></div>', unsafe_allow_html=True)
+    with c:
+        st.markdown('<div class="feature-card"><div class="feature-icon">↗</div><h3>Exam predictor</h3><p>Compare notes with PYQs and identify high-priority topics.</p><span class="feature-label">PLAN & PREPARE</span></div>', unsafe_allow_html=True)
     st.stop()
 
-chat_tab, topics_tab, predict_tab = st.tabs(["💬 Chat with notes", "📌 Main topics", "🔮 Exam predictor"])
+chat_tab, topics_tab, predict_tab = st.tabs(["✦  Chat with notes", "⌁  Main topics", "↗  Exam predictor"])
 
 # ---------------------------------------------------------------- chat
 def show_sources(sources) -> None:
     with st.expander("Sources from your notes"):
         for i, (src, page, snippet) in enumerate(sources, 1):
-            st.markdown(f"**[{i}] {src}, page {page}**  \n{snippet}")
+            st.markdown(f"**[{i}] {src}, page {page}**  \\n{snippet}")
 
 
 with chat_tab:
@@ -215,7 +313,6 @@ with chat_tab:
                 S.pending_prompt = text
                 st.rerun()
 
-    # Messages go in this box so the input box always stays underneath them
     conversation = st.container()
     with conversation:
         for m in S.messages:
@@ -242,7 +339,7 @@ with chat_tab:
                             _, docs = bot.retrieve(prompt, history)
                         answer = st.write_stream(bot.stream(prompt, history, docs))
                         sources = [(d.metadata["source"], d.metadata["page"],
-                                    d.page_content[:300].replace("\n", " ") + "...") for d in docs]
+                                    d.page_content[:300].replace("\\n", " ") + "...") for d in docs]
                         show_sources(sources)
                         S.messages += [{"role": "user", "content": prompt},
                                        {"role": "assistant", "content": answer, "sources": sources}]
@@ -303,7 +400,7 @@ with topics_tab:
                            file_name=f"{os.path.splitext(name)[0]}_topics.md")
 
     with st.expander("🔬 NLP pipeline view (what preprocessing does to this document)"):
-        report = pipeline_report("\n".join(p.page_content for p in pages))
+        report = pipeline_report("\\n".join(p.page_content for p in pages))
         c = st.columns(4)
         c[0].metric("Tokens", f"{report['tokens']:,}")
         c[1].metric("Vocabulary", f"{report['vocabulary']:,}")
@@ -328,7 +425,7 @@ with predict_tab:
     st.markdown(f"**Past questions** ({len(S.pyqs)})")
     if not S.pyqs:
         st.caption("No question papers uploaded, so predictions will use your notes only. "
-                   "Upload PYQ PDFs in the sidebar, or type questions into the table.")
+                   "Upload PYQ PDFs in the sidebar, or type questions into the table")
     table = pd.DataFrame([{"Year": q.year, "Marks": q.marks, "Question": q.text, "Source": q.source}
                           for q in S.pyqs], columns=["Year", "Marks", "Question", "Source"])
     table[["Year", "Marks"]] = table[["Year", "Marks"]].apply(pd.to_numeric, errors="coerce")
@@ -444,20 +541,20 @@ with predict_tab:
             st.markdown(
                 "Every past question and every chunk of your notes is turned into a sentence "
                 "embedding (all-MiniLM-L6-v2). Each question is matched to its closest topic by "
-                "cosine similarity. Then for each topic:\n\n"
+                "cosine similarity. Then for each topic:\\n\\n"
                 "`score = 0.45 × (years asked / years available) + 0.20 × recency + "
-                "0.15 × marks share + 0.20 × notes coverage`\n\n"
+                "0.15 × marks share + 0.20 × notes coverage`\\n\\n"
                 "Topics never asked score `0.35 × notes coverage` — big topics in your notes "
                 "that haven't come yet are good surprise candidates.")
 
         if a.not_asked:
             st.subheader("Not asked yet")
-            st.caption("Covered in your notes but never in the papers you gave — possible surprises.")
+            st.caption("Covered in your notes but never in the papers you gave — possible surprises")
             st.markdown(" ".join(badge(s.topic.label, "orange") for s in a.not_asked[:15]))
 
         if a.gaps:
             st.subheader("Past questions your notes don't cover")
-            st.caption("Study these from the textbook or ask your teacher — the notes are missing them.")
+            st.caption("Study these from the textbook or ask your teacher — the notes are missing them")
             for g in a.gaps:
                 missing = f" — notes never mention: *{', '.join(g.missing_terms)}*" if g.missing_terms else ""
                 year = f"({g.question.year}) " if g.question.year else ""
