@@ -1,0 +1,20 @@
+streamlit>=1.45
+python-dotenv
+pandas
+numpy
+scikit-learn
+nltk
+
+# LangChain
+langchain-core>=1.0
+langchain-community>=0.4
+langchain-text-splitters>=1.0
+langchain-huggingface>=1.0
+pypdf
+faiss-cpu
+sentence-transformers
+
+# LLM providers (you only need the key for the one you use)
+langchain-groq
+langchain-google-genai
+langchain-openai

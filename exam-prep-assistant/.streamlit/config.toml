@@ -1,0 +1,11 @@
+[server]
+# Only this computer can open the app (Streamlit's default also lets anyone on
+# the same Wi-Fi in). Remove this line if you want to demo it from a phone.
+address = "localhost"
+# Streamlit's file watcher scans every module of `transformers` and floods the
+# terminal with harmless "No module named torchvision" tracebacks. Turn it off.
+# (Set to "auto" while developing if you want the app to reload when you save.)
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
