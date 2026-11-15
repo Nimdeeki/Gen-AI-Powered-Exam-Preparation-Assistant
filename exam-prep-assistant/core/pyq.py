@@ -43,7 +43,9 @@ TRAILING_CO_RE = re.compile(r"\s*\bCO\s*\d+\s*(?:(?:BL|L|K)\s*\d)?\s*$", re.I)
 
 QUESTION_TYPES = [
     ("Compare / differentiate", r"\b(differentiate|distinguish|compare|contrast|difference|versus|vs\.?)\b"),
-    ("Numerical / calculate", r"\b(calculate|compute|solve|numerical|evaluate|find the value)\b"),
+    ("Numerical / calculate", r"\b(calculate|compute|solve|numerical|evaluate|estimate|find the value"
+                              r"|formula|mathematical(ly)?|prove|derive)\b"),
+    ("Case study / design", r"\b(propose|design an?|suggest an?|strategy|scenario)\b"),
     ("Code / implement", r"\b(code|program|implement|python|pseudo-?code)\b"),
     ("Diagram / architecture", r"\b(diagram|draw|architecture|flow\s*chart|sketch|illustrate)\b"),
     ("Short notes", r"\b(short notes?|write a note|notes? on)\b"),
