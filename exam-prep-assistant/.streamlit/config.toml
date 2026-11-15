@@ -9,3 +9,12 @@ fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+# Always light, matching the sage-green design. Without this, a laptop in dark
+# mode gives Streamlit's widgets light text on the light backgrounds above.
+base = "light"
+primaryColor = "#526B58"
+backgroundColor = "#F5F3ED"
+secondaryBackgroundColor = "#E4E9DF"
+textColor = "#29352E"
