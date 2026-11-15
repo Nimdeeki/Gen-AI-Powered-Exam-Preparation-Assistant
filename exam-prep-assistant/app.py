@@ -54,6 +54,12 @@ section[data-testid="stSidebar"] p,section[data-testid="stSidebar"] label,sectio
     box-shadow:0 4px 12px rgba(57,82,63,.12);
 }
 .stButton > button:disabled { background:#DCE3D8 !important; color:#89978A !important; border-color:#DCE3D8 !important; }
+/* Button labels sit inside a <p>/<span>, which the p and sidebar rules above would turn dark */
+.stButton > button *,.stDownloadButton > button * { color:#FFF !important; }
+.stButton > button:disabled * { color:#89978A !important; }
+/* File uploader's own button: white with green text */
+[data-testid="stFileUploader"] button { background:#FFF !important; border:1px solid #B7C6B3 !important; border-radius:10px !important; }
+[data-testid="stFileUploader"] button,[data-testid="stFileUploader"] button * { color:#3D5744 !important; }
 
 /* Tabs */
 .stTabs [data-baseweb="tab-list"] { background:#E8EAE3; padding:6px; border-radius:12px; gap:6px; }
@@ -65,6 +71,10 @@ section[data-testid="stSidebar"] p,section[data-testid="stSidebar"] label,sectio
 [data-testid="stMetric"] { background:#FFF; border:1px solid #E5E8DF; border-radius:14px; padding:18px 20px; box-shadow:0 3px 12px rgba(45,65,48,.035); }
 [data-testid="stMetricLabel"] { color:#778579 !important; font-weight:600; }
 [data-testid="stMetricValue"] { color:#3D5B45 !important; font-weight:750; }
+/* Let metric numbers and labels wrap instead of being cut to "3,..." in narrow columns */
+[data-testid="stMetric"] { padding:14px 14px; }
+[data-testid="stMetricValue"] { font-size:1.6rem !important; }
+[data-testid="stMetricValue"] *,[data-testid="stMetricLabel"] * { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
 
 /* Containers and expanders */
 [data-testid="stVerticalBlockBorderWrapper"] { background:#FFF; border:1px solid #E5E8DF !important; border-radius:14px; }
@@ -161,12 +171,12 @@ def active_llm():
 def need_llm_message() -> None:
     info = PROVIDERS[S.provider]
     st.info(f"Add your **{S.provider}** API key in the sidebar to use this. "
-            f"Free key: {info['key_url']}  \\nNo key? Choose *Hugging Face local* (slower, offline).")
+            f"Free key: {info['key_url']}  \nNo key? Choose *Hugging Face local* (slower, offline).")
 
 
 def catalog() -> str:
     by_src = group_by_source(S.pages)
-    return "\\n".join(
+    return "\n".join(
         f"- {src} ({len(pages)} pages). Key terms: "
         f"{', '.join(p for p, _ in S.keyphrases.get(src, [])[:8])}"
         for src, pages in by_src.items())
@@ -187,8 +197,8 @@ def process_notes(files) -> None:
             return
         st.write(f"2/4 Splitting {len(pages)} pages into chunks")
         chunks = split_documents(pages)
-        store = build_index(chunks)
         st.write(f"3/4 Embedding {len(chunks)} chunks into a FAISS vector store")
+        store = build_index(chunks)
         st.write("4/4 Finding key phrases (TF-IDF + embeddings)")
         keyphrases = {src: extract_keyphrases(cs) for src, cs in group_by_source(chunks).items()}
         S.pages, S.chunks, S.store, S.keyphrases, S.warnings = pages, chunks, store, keyphrases, warnings
@@ -202,7 +212,7 @@ def process_pyqs(files) -> None:
     questions: list[PYQuestion] = []
     for f in files:
         try:
-            text = "\\n".join(p.page_content for p in load_pdf(f.name, f.getvalue()))
+            text = "\n".join(p.page_content for p in load_pdf(f.name, f.getvalue()))
         except Exception as exc:
             st.warning(f"Could not read {f.name}: {exc}")
             continue
@@ -295,7 +305,7 @@ chat_tab, topics_tab, predict_tab = st.tabs(["✦  Chat with notes", "⌁  Main 
 def show_sources(sources) -> None:
     with st.expander("Sources from your notes"):
         for i, (src, page, snippet) in enumerate(sources, 1):
-            st.markdown(f"**[{i}] {src}, page {page}**  \\n{snippet}")
+            st.markdown(f"**[{i}] {src}, page {page}**  \n{snippet}")
 
 
 with chat_tab:
@@ -339,7 +349,7 @@ with chat_tab:
                             _, docs = bot.retrieve(prompt, history)
                         answer = st.write_stream(bot.stream(prompt, history, docs))
                         sources = [(d.metadata["source"], d.metadata["page"],
-                                    d.page_content[:300].replace("\\n", " ") + "...") for d in docs]
+                                    d.page_content[:300].replace("\n", " ") + "...") for d in docs]
                         show_sources(sources)
                         S.messages += [{"role": "user", "content": prompt},
                                        {"role": "assistant", "content": answer, "sources": sources}]
@@ -400,7 +410,7 @@ with topics_tab:
                            file_name=f"{os.path.splitext(name)[0]}_topics.md")
 
     with st.expander("🔬 NLP pipeline view (what preprocessing does to this document)"):
-        report = pipeline_report("\\n".join(p.page_content for p in pages))
+        report = pipeline_report("\n".join(p.page_content for p in pages))
         c = st.columns(4)
         c[0].metric("Tokens", f"{report['tokens']:,}")
         c[1].metric("Vocabulary", f"{report['vocabulary']:,}")
@@ -541,9 +551,9 @@ with predict_tab:
             st.markdown(
                 "Every past question and every chunk of your notes is turned into a sentence "
                 "embedding (all-MiniLM-L6-v2). Each question is matched to its closest topic by "
-                "cosine similarity. Then for each topic:\\n\\n"
+                "cosine similarity. Then for each topic:\n\n"
                 "`score = 0.45 × (years asked / years available) + 0.20 × recency + "
-                "0.15 × marks share + 0.20 × notes coverage`\\n\\n"
+                "0.15 × marks share + 0.20 × notes coverage`\n\n"
                 "Topics never asked score `0.35 × notes coverage` — big topics in your notes "
                 "that haven't come yet are good surprise candidates.")
 
