@@ -1,18 +1,12 @@
 [server]
-# Only this computer can open the app (Streamlit's default also lets anyone on
-# the same Wi-Fi in). Remove this line if you want to demo it from a phone.
 address = "localhost"
-# Streamlit's file watcher scans every module of `transformers` and floods the
-# terminal with harmless "No module named torchvision" tracebacks. Turn it off.
-# (Set to "auto" while developing if you want the app to reload when you save.)
 fileWatcherType = "none"
+maxUploadSize = 1000
 
 [browser]
 gatherUsageStats = false
 
 [theme]
-# Always light, matching the sage-green design. Without this, a laptop in dark
-# mode gives Streamlit's widgets light text on the light backgrounds above.
 base = "light"
 primaryColor = "#526B58"
 backgroundColor = "#F5F3ED"

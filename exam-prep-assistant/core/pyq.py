@@ -1,15 +1,7 @@
-"""Turn previous-year question papers (PYQs) into a clean list of questions.
-
-Rule-based (heuristic) NLP with regular expressions: university papers follow a
-small number of numbering styles (Q1, Q.1, 1., (a), ii) ...), so regex is fast,
-free and accurate enough. Users can correct anything it misses in the app.
-"""
-
 import re
 from dataclasses import dataclass
 
 YEAR_RE = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
-# A non-question line that announces a paper, e.g. "End Semester Examination May 2023"
 YEAR_HEADER_RE = re.compile(
     r"(?:exam|examination|paper|semester|session|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)"
     r"\D{0,40}((?:19|20)\d{2})(?!\d)", re.I)
@@ -17,27 +9,26 @@ YEAR_HEADER_RE = re.compile(
 MAIN_Q_RE = re.compile(
     r"^(?:Q(?:ue(?:s(?:tion)?)?)?\s*\.?\s*(?:No\.?\s*)?(\d{1,2})[a-z]?|(\d{1,2}))\s*[\.\):\-]?\s+(.*)$",
     re.I)
-# (a) / a) / ii) / a. Explain...  ("a." needs a space after it so "B.Tech" is not a sub-question)
 SUB_Q_RE = re.compile(r"^\(?((?:[a-h])|(?:i{1,3}|iv|vi{0,3}|ix|x))\s*(?:\)\s*|\.\s+)(.*)$", re.I)
-# A table cell holding only the marks of the question above: "10", "5 M", "10 CO3 L2"
 MARKS_LINE_RE = re.compile(r"^(\d{1,2})\s*(?:M|marks?|(?:M\s*)?CO\s*\d+(?:\s*(?:BL|L|K)\s*\d)?)$", re.I)
 
 INSTRUCTION_RE = re.compile(
     r"attempt|answer\s+(?:any|all|the\s+following)|all\s+questions|compulsory|max(?:imum)?\.?\s*marks"
     r"|time\s*(?:allowed)?\s*:|roll\s*no|candidates?|instructions?|figures\s+to\s+the\s+right"
-    r"|assume\s+suitable|\bOR\b\s*$|^or$|^section\s+[a-z]\b|^part\s+[a-z]\b", re.I)
+    r"|assume\s+suitable|subject\s*(?:code|name)?\s*:|programme\s*:|branch\s*:|duration\s*:|full\s+marks|\bOR\b\s*$|^or$|^section\s+[a-z]\b|^part\s+[a-z]\b", re.I)
 
 JUNK_LINE_RE = re.compile(
     r"^(page\s*\d+(\s*of\s*\d+)?|p\.?\s*t\.?\s*o\.?|-+\s*\d+\s*-+|\*+|end of paper"
-    r"|CO\s*\d+|(?:BL|L|K)\s*\d|CO\s*\d+\s*(?:BL|L|K)\s*\d|q\.?\s*no\.?|questions?|marks?)$", re.I)
-# Table-style papers put the question number alone on its own line: "1", "Q.2", "3)"
+    r"|CO\s*\d+|(?:BL|L|K)\s*\d|CO\s*\d+\s*(?:BL|L|K)\s*\d|q\.?\s*no\.?|questions?|marks?|[bm]\.\s*tech\b.*)$", re.I)
 NUMBER_ONLY_RE = re.compile(r"^(?:Q(?:ue(?:s(?:tion)?)?)?\s*\.?\s*(?:No\.?\s*)?)?\d{1,2}[a-z]?\s*[\.\):]?$", re.I)
 
 MARKS_PATTERNS = [
-    re.compile(r"[\[\(]\s*(\d{1,2}(?:\.\d)?)\s*(?:marks?|m)?\s*[\]\)]\s*$", re.I),            # [5] (10 marks)
-    re.compile(r"\b(\d{1,2})\s*marks?\b\.?\s*$", re.I),                                          # 5 marks
-    re.compile(r"\s(\d{1,2})\s*(?:M|marks?)?\s*CO\s*\d+\s*(?:(?:BL|L|K)\s*\d)?\s*$", re.I),  # 5 CO2 L3
-    re.compile(r"\s(\d{1,2})\s*M\s*$"),                                                        # 5M
+    re.compile(r"[\[\(][\d\s.+]*=\s*(\d{1,2}(?:\.\d)?)\s*(?:marks?|m)?\s*[\]\)]\s*$", re.I),
+    re.compile(r"[\[\(]\s*(\d{1,2}(?:\s*\+\s*\d{1,2})+)\s*(?:marks?|m)?\s*[\]\)]\s*$", re.I),
+    re.compile(r"[\[\(]\s*(\d{1,2}(?:\.\d)?)\s*(?:marks?|m)?\s*[\]\)]\s*$", re.I),
+    re.compile(r"\b(\d{1,2})\s*marks?\b\.?\s*$", re.I),
+    re.compile(r"\s(\d{1,2})\s*(?:M|marks?)?\s*CO\s*\d+\s*(?:(?:BL|L|K)\s*\d)?\s*$", re.I),
+    re.compile(r"\s(\d{1,2})\s*M\s*$"),
 ]
 TRAILING_CO_RE = re.compile(r"\s*\bCO\s*\d+\s*(?:(?:BL|L|K)\s*\d)?\s*$", re.I)
 
@@ -75,7 +66,7 @@ def split_marks(text: str) -> tuple[str, float | None]:
     for pattern in MARKS_PATTERNS:
         m = pattern.search(text)
         if m:
-            return text[:m.start()].strip(), float(m.group(1))
+            return text[:m.start()].strip(), sum(float(x) for x in m.group(1).split("+"))
     return TRAILING_CO_RE.sub("", text).strip(), None
 
 
@@ -85,11 +76,10 @@ def detect_year(name: str, text: str) -> int | None:
 
 
 def _blocks(text: str, start_year: int | None) -> list[tuple[str, str, int | None]]:
-    """First pass: split lines into ('main' | 'sub', text, year) blocks."""
     blocks: list[list] = []
     year = start_year
-    open_block = False          # may the next plain line continue the last question?
-    pending_number = False      # saw a bare "1" / "Q.2" line; the next line is a question
+    open_block = False
+    pending_number = False
     for raw in text.splitlines():
         line = raw.strip()
         if not line or JUNK_LINE_RE.match(line):
@@ -109,7 +99,7 @@ def _blocks(text: str, start_year: int | None) -> list[tuple[str, str, int | Non
         if main:
             rest = main.group(3).strip()
             inner = SUB_Q_RE.match(rest)
-            if inner:  # "Q1 (a) Explain ..." -> empty stem + sub-question
+            if inner:
                 blocks.append(["main", "", year])
                 blocks.append(["sub", inner.group(2).strip(), year])
             else:
@@ -121,7 +111,7 @@ def _blocks(text: str, start_year: int | None) -> list[tuple[str, str, int | Non
         else:
             header = YEAR_HEADER_RE.search(line)
             if header and len(line) < 100 and not line.endswith("?"):
-                year = int(header.group(1))   # a new paper starts (combined PYQ PDFs)
+                year = int(header.group(1))
                 open_block = False
             elif INSTRUCTION_RE.search(line):
                 open_block = False
@@ -140,9 +130,9 @@ def extract_questions(name: str, text: str) -> list[PYQuestion]:
             stem = body
             has_parts = i + 1 < len(blocks) and blocks[i + 1][0] == "sub"
             if has_parts:
-                continue                 # the stem is only a heading for its parts
+                continue
         elif len(body.split()) < 6 and stem and not INSTRUCTION_RE.search(stem):
-            body = f"{stem.rstrip(':')}: {body}"   # "Write short notes on: Tokenization"
+            body = f"{stem.rstrip(':')}: {body}"
         body, marks = split_marks(re.sub(r"\s+", " ", body))
         if len(body.split()) < 3:
             continue
@@ -151,7 +141,6 @@ def extract_questions(name: str, text: str) -> list[PYQuestion]:
         questions.append(PYQuestion(text=body, source=name, year=q_year, marks=marks,
                                     qtype=classify_question(body)))
 
-    # The same question can appear twice (e.g. an "OR" choice repeated); keep the first
     seen, unique = set(), []
     for q in questions:
         key = (q.year, q.text.lower())

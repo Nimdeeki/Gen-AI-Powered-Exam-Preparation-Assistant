@@ -1,11 +1,3 @@
-"""Run the whole pipeline from the command line (no Streamlit) to check everything works.
-
-    python scripts/smoke_test.py --notes "path/to/notes" --pyq samples
-    python scripts/smoke_test.py --notes notes --pyq samples --provider "Groq (free API, fast)"
-
-Without --provider it uses a fake LLM, which checks the wiring but not answer quality.
-"""
-
 import argparse
 import os
 import sys
@@ -13,17 +5,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dotenv import load_dotenv  # noqa: E402
-from langchain_core.language_models.fake_chat_models import FakeListChatModel  # noqa: E402
+from dotenv import load_dotenv
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-from core.chat import StudyChatbot  # noqa: E402
-from core.config import PROVIDERS  # noqa: E402
-from core.documents import group_by_source, load_pdf, load_pdfs, split_documents  # noqa: E402
-from core.llm import get_llm  # noqa: E402
-from core.predictor import analyse, build_evidence, build_topic_inventory, predict_questions  # noqa: E402
-from core.pyq import extract_questions  # noqa: E402
-from core.topics import extract_keyphrases, summarize_topics  # noqa: E402
-from core.vectorstore import build_index  # noqa: E402
+from core.chat import StudyChatbot
+from core.config import PROVIDERS
+from core.documents import group_by_source, load_pdf, load_pdfs, split_documents
+from core.llm import get_llm
+from core.predictor import analyse, build_evidence, build_topic_inventory, predict_questions
+from core.pyq import extract_questions
+from core.topics import extract_keyphrases, summarize_topics
+from core.vectorstore import build_index
 
 
 def read_dir(folder: str) -> list[tuple[str, bytes]]:

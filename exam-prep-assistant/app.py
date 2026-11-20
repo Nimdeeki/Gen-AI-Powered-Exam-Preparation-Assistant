@@ -1,8 +1,3 @@
-"""Exam Prep Assistant - chat with your notes, get main topics, predict exam questions.
-
-Run:  streamlit run app.py
-"""
-
 import os
 
 import pandas as pd
@@ -14,6 +9,7 @@ from core.chat import StudyChatbot
 from core.config import PROVIDERS
 from core.documents import group_by_source, load_pdf, load_pdfs, split_documents
 from core.llm import get_llm
+from core.ocr import read_images, scanned_pages, vision_llm
 from core.predictor import analyse, build_topic_inventory, paper_to_markdown, predict_questions
 from core.preprocess import pipeline_report
 from core.pyq import PYQuestion, classify_question, extract_questions
@@ -23,7 +19,6 @@ from core.vectorstore import build_index
 load_dotenv()
 st.set_page_config(page_title="Exam Prep Assistant", page_icon="📚", layout="wide")
 
-# ---------------------------------------------------------------- frontend theme
 st.markdown("""
 <style>
 .stApp { background:#F5F3ED; color:#29352E; font-family:"Inter","Segoe UI",sans-serif; }
@@ -36,14 +31,12 @@ h3,h4 { color:#425D4B !important; font-weight:650 !important; }
 p,li,label { color:#445148; }
 [data-testid="stCaptionContainer"] { color:#7B897D; }
 
-/* Sidebar */
 section[data-testid="stSidebar"] { background:#E4E9DF; border-right:1px solid #D4DDD0; }
 section[data-testid="stSidebar"] > div { padding-top:1.5rem; }
 section[data-testid="stSidebar"] h1 { color:#304B3C !important; font-size:1.55rem !important; letter-spacing:-.6px; }
 section[data-testid="stSidebar"] h2,section[data-testid="stSidebar"] h3 { color:#526B58 !important; }
 section[data-testid="stSidebar"] p,section[data-testid="stSidebar"] label,section[data-testid="stSidebar"] span { color:#45584A; }
 
-/* Buttons */
 .stButton > button,.stDownloadButton > button {
     background:#526B58 !important; color:#FFF !important; border:1px solid #526B58 !important;
     border-radius:10px !important; padding:.55rem 1rem !important; font-weight:600 !important;
@@ -54,34 +47,27 @@ section[data-testid="stSidebar"] p,section[data-testid="stSidebar"] label,sectio
     box-shadow:0 4px 12px rgba(57,82,63,.12);
 }
 .stButton > button:disabled { background:#DCE3D8 !important; color:#89978A !important; border-color:#DCE3D8 !important; }
-/* Button labels sit inside a <p>/<span>, which the p and sidebar rules above would turn dark */
 .stButton > button *,.stDownloadButton > button * { color:#FFF !important; }
 .stButton > button:disabled * { color:#89978A !important; }
-/* File uploader's own button: white with green text */
 [data-testid="stFileUploader"] button { background:#FFF !important; border:1px solid #B7C6B3 !important; border-radius:10px !important; }
 [data-testid="stFileUploader"] button,[data-testid="stFileUploader"] button * { color:#3D5744 !important; }
 
-/* Tabs */
 .stTabs [data-baseweb="tab-list"] { background:#E8EAE3; padding:6px; border-radius:12px; gap:6px; }
 .stTabs [data-baseweb="tab"] { background:transparent; border-radius:9px; color:#657567; font-weight:600; padding:10px 18px; }
 .stTabs [aria-selected="true"] { background:#FFF !important; color:#405D47 !important; box-shadow:0 2px 6px rgba(40,60,45,.07); }
 .stTabs [data-testid="stTabHighlight"],.stTabs [data-baseweb="tab-highlight"] { background:transparent; }
 
-/* Metrics */
 [data-testid="stMetric"] { background:#FFF; border:1px solid #E5E8DF; border-radius:14px; padding:18px 20px; box-shadow:0 3px 12px rgba(45,65,48,.035); }
 [data-testid="stMetricLabel"] { color:#778579 !important; font-weight:600; }
 [data-testid="stMetricValue"] { color:#3D5B45 !important; font-weight:750; }
-/* Let metric numbers and labels wrap instead of being cut to "3,..." in narrow columns */
 [data-testid="stMetric"] { padding:14px 14px; }
 [data-testid="stMetricValue"] { font-size:1.6rem !important; }
 [data-testid="stMetricValue"] *,[data-testid="stMetricLabel"] * { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
 
-/* Containers and expanders */
 [data-testid="stVerticalBlockBorderWrapper"] { background:#FFF; border:1px solid #E5E8DF !important; border-radius:14px; }
 [data-testid="stExpander"] { background:#FFF; border:1px solid #E1E6DC; border-radius:12px; overflow:hidden; }
 [data-testid="stExpander"] summary { color:#425D4B; font-weight:600; }
 
-/* Inputs */
 .stTextInput input,.stTextArea textarea,[data-testid="stChatInput"] textarea {
     background:#FFF !important; color:#29352E !important; border:1px solid #D9E1D5 !important; border-radius:10px !important;
 }
@@ -90,20 +76,16 @@ section[data-testid="stSidebar"] p,section[data-testid="stSidebar"] label,sectio
 [data-testid="stFileUploader"] { background:#FFF; border:1px dashed #B7C6B3; border-radius:14px; padding:12px; }
 [data-testid="stFileUploader"] section { background:transparent; }
 
-/* Chat */
 [data-testid="stChatMessage"] { background:#FFF; border:1px solid #E5E8DF; border-radius:14px; padding:12px 16px; margin-bottom:12px; }
 [data-testid="stChatInput"] { background:#FFF; border:1px solid #D9E1D5; border-radius:16px; }
 
-/* Tables */
 [data-testid="stDataFrame"],[data-testid="stTable"] { border:1px solid #E1E6DC; border-radius:12px; overflow:hidden; }
 
-/* Other controls */
 hr { border-color:#DDE3D8 !important; }
 [data-testid="stCheckbox"] label,[data-testid="stToggle"] label { color:#4C604F !important; }
 [data-testid="stSlider"] [role="slider"] { background:#526B58; }
 [data-testid="stAlert"] { border-radius:12px; }
 
-/* Premium landing dashboard */
 .hero-wrap { background:linear-gradient(125deg,#F8F7F0 0%,#E8EEE3 58%,#DCE8D9 100%); border:1px solid #DCE5D8; border-radius:24px; padding:42px 46px 36px; margin:6px 0 28px; position:relative; overflow:hidden; }
 .hero-wrap:after { content:""; position:absolute; width:280px;height:280px;border:1px solid rgba(83,117,88,.14);border-radius:50%;right:-75px;top:-90px;box-shadow:0 0 0 28px rgba(83,117,88,.035),0 0 0 58px rgba(83,117,88,.025); }
 .hero-eyebrow { color:#71866F; font-size:.72rem; letter-spacing:2.6px; font-weight:800; margin-bottom:18px; }
@@ -117,7 +99,6 @@ hr { border-color:#DDE3D8 !important; }
 .feature-card h3 { color:#365440!important;font-size:1.12rem!important;margin:0 0 9px!important; }
 .feature-card p { color:#788477;font-size:.91rem;line-height:1.6; }
 .feature-label { color:#8A9A84;font-size:.66rem;font-weight:800;letter-spacing:1.5px; }
-/* Scrollbar */
 ::-webkit-scrollbar { width:8px; }
 ::-webkit-scrollbar-thumb { background:#C7D2C3; border-radius:8px; }
 ::-webkit-scrollbar-track { background:#F5F3ED; }
@@ -134,7 +115,6 @@ for key, value in DEFAULTS.items():
 S = st.session_state
 
 
-# ---------------------------------------------------------------- helpers
 def friendly_error(exc: Exception) -> str:
     msg = str(exc)
     low = msg.lower()
@@ -143,6 +123,9 @@ def friendly_error(exc: Exception) -> str:
     if any(k in low for k in ("429", "rate limit", "rate_limit", "quota", "resource_exhausted")):
         return ("The free-tier rate limit was reached. Wait a minute and try again, or pick a "
                 "smaller/faster model in the sidebar.")
+    if any(k in low for k in ("503", "over capacity", "overloaded")):
+        return ("The AI service is busy right now. Try again in a minute; pages that were "
+                "already read are saved.")
     if "model" in low and any(k in low for k in ("not found", "decommissioned", "does not exist")):
         return "That model name is not available. Change the model name in the sidebar."
     return f"Something went wrong: {msg[:600]}"
@@ -157,13 +140,12 @@ PRIORITY_COLOR = {"High": "red", "Medium": "orange", "Low": "gray"}
 
 
 def active_llm():
-    """Return the chat model chosen in the sidebar, or None if it is not usable yet."""
     info = PROVIDERS[S.provider]
     if info["key_env"] and not S.get("api_key"):
         return None
     try:
         return get_llm(S.provider, S.model, S.get("api_key"))
-    except Exception as exc:  # e.g. missing package, bad model id
+    except Exception as exc:
         st.error(friendly_error(exc))
         return None
 
@@ -186,7 +168,6 @@ def chatbot(llm) -> StudyChatbot:
     return StudyChatbot(llm, S.store, catalog())
 
 
-# ---------------------------------------------------------------- processing
 def process_notes(files) -> None:
     with st.status("Reading your notes...", expanded=True) as status:
         st.write("1/4 Extracting text from PDFs (PyPDFLoader)")
@@ -208,25 +189,71 @@ def process_notes(files) -> None:
                       state="complete", expanded=False)
 
 
+def read_scans(name: str, scans: list[tuple[int, bytes]], page_text: dict[int, str]) -> bool:
+    llm, model = vision_llm(S.provider, S.get("api_key"))
+    if llm is None:
+        st.warning(f"{name} has {len(scans)} scanned pages. Choose Groq, Gemini or OpenAI in the "
+                   "sidebar and add its API key, so the AI can read the page images.")
+        return False
+    st.write(f"{name}: {len(scans)} scanned pages, reading them with {model}")
+    if S.provider.startswith("Groq") and len(scans) > 3:
+        st.caption("Groq's free plan reads about 3 pages a minute, so this can take a few minutes.")
+    bar = st.progress(0.0)
+    where = {"value": 0.0, "page": ""}
+
+    def on_page(n: int, total: int) -> None:
+        where.update(value=(n - 1) / total, page=f"Page {n} of {total}")
+        bar.progress(where["value"], text=where["page"])
+
+    def on_wait(seconds: float, exc: Exception) -> None:
+        reason = "free-plan limit" if "429" in str(exc) or "rate" in str(exc).lower() else "service busy"
+        bar.progress(where["value"], text=f"{where['page']} · {reason}, waiting {seconds:.0f} s")
+
+    texts = read_images(llm, model, [img for _, img in scans], on_page, on_wait)
+    bar.progress(1.0, text="Done")
+    failed = [t for t in texts if isinstance(t, Exception)]
+    for (number, _), text in zip(scans, texts):
+        if not isinstance(text, Exception):
+            page_text[number] = f"{page_text.get(number, '')}\n{text}".strip()
+    if failed:
+        pages = "page" if len(failed) == 1 else "pages"
+        st.warning(f"{len(failed)} scanned {pages} of {name} could not be read. "
+                   f"{friendly_error(failed[0])}")
+    return not failed
+
+
 def process_pyqs(files) -> None:
     questions: list[PYQuestion] = []
-    for f in files:
-        try:
-            text = "\n".join(p.page_content for p in load_pdf(f.name, f.getvalue()))
-        except Exception as exc:
-            st.warning(f"Could not read {f.name}: {exc}")
-            continue
-        found = extract_questions(f.name, text)
-        if not found:
-            st.warning(f"No questions recognised in {f.name}. You can type them in the table "
-                       "on the Exam predictor tab.")
-        questions += found
+    all_ok = True
+    with st.status("Reading question papers...", expanded=True) as status:
+        for f in files:
+            data = f.getvalue()
+            try:
+                page_text = {p.metadata["page"]: p.page_content for p in load_pdf(f.name, data)}
+                scans = scanned_pages(data)
+            except Exception as exc:
+                st.warning(f"Could not read {f.name}: {exc}")
+                all_ok = False
+                continue
+            if scans:
+                all_ok = read_scans(f.name, scans, page_text) and all_ok
+            text = "\n".join(page_text[k] for k in sorted(page_text))
+            found = extract_questions(f.name, text)
+            if found:
+                st.write(f"{f.name}: {len(found)} questions")
+            else:
+                all_ok = False
+                st.warning(f"No questions recognised in {f.name}. You can type them in the table "
+                           "on the Exam predictor tab.")
+            questions += found
+        papers = "paper" if len(files) == 1 else "papers"
+        status.update(label=f"Read {len(questions)} questions from {len(files)} {papers}",
+                      state="complete" if questions else "error", expanded=not all_ok)
     S.pyqs = questions
     S.pyq_version += 1
     S.analysis, S.paper, S.answers = None, None, {}
 
 
-# ---------------------------------------------------------------- sidebar
 with st.sidebar:
     st.title("📚 Exam Prep Assistant")
     st.caption("NLP + GenAI with LangChain")
@@ -278,7 +305,6 @@ with st.sidebar:
 for w in S.warnings:
     st.warning(w)
 
-# ---------------------------------------------------------------- main
 st.markdown("""
 <div class="hero-wrap">
   <div class="hero-eyebrow">YOUR PERSONAL STUDY SPACE</div>
@@ -301,7 +327,6 @@ if not S.keyphrases:
 
 chat_tab, topics_tab, predict_tab = st.tabs(["✦  Chat with notes", "⌁  Main topics", "↗  Exam predictor"])
 
-# ---------------------------------------------------------------- chat
 def show_sources(sources) -> None:
     with st.expander("Sources from your notes"):
         for i, (src, page, snippet) in enumerate(sources, 1):
@@ -356,7 +381,6 @@ with chat_tab:
                     except Exception as exc:
                         st.error(friendly_error(exc))
 
-# ---------------------------------------------------------------- topics
 with topics_tab:
     left, right = st.columns([2, 1])
     with right:
@@ -427,7 +451,6 @@ with topics_tab:
                      column_config={"Score": st.column_config.ProgressColumn(min_value=0, max_value=1,
                                                                              format="%.2f")})
 
-# ---------------------------------------------------------------- predictor
 with predict_tab:
     st.markdown("Compares your notes with previous year questions (PYQs): which topics "
                 "repeat, which are due, which were never asked, and then predicts questions.")

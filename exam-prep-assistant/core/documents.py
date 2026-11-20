@@ -1,5 +1,3 @@
-"""Step 1 of the NLP pipeline: data acquisition (PDF -> text) and chunking."""
-
 import os
 import re
 import tempfile
@@ -10,19 +8,16 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from core.config import CHUNK_OVERLAP, CHUNK_SIZE
 
-
 def clean_text(text: str) -> str:
-    """Basic clean-up: fix PDF artefacts but keep line breaks (needed for PYQ parsing)."""
     text = text.replace(" ", " ").replace("​", "")
-    text = re.sub(r"[ \t]+", " ", text)            # collapse runs of spaces
-    text = re.sub(r" *\n *", "\n", text)            # trim spaces around newlines
-    text = re.sub(r"\n[•●▪◦\-–]\s*\n", "\n• ", text)  # bullet glyph on its own line
-    text = re.sub(r"\n{3,}", "\n\n", text)          # at most one blank line
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n[•●▪◦\-–]\s*\n", "\n• ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
 def load_pdf(name: str, data: bytes) -> list[Document]:
-    """Load one PDF with LangChain's PyPDFLoader. Returns one Document per page."""
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp.write(data)
         path = tmp.name
@@ -41,12 +36,11 @@ def load_pdf(name: str, data: bytes) -> list[Document]:
 
 
 def load_pdfs(files: list[tuple[str, bytes]]) -> tuple[list[Document], list[str]]:
-    """Load many PDFs. Returns (pages, warnings)."""
     all_pages, warnings = [], []
     for name, data in files:
         try:
             pages = load_pdf(name, data)
-        except Exception as exc:  # corrupt / encrypted PDFs
+        except Exception as exc:
             warnings.append(f"Could not read {name}: {exc}")
             continue
         empty = [p.metadata["page"] for p in pages if len(p.page_content) < 20]
@@ -61,7 +55,6 @@ def load_pdfs(files: list[tuple[str, bytes]]) -> tuple[list[Document], list[str]
 
 
 def split_documents(pages: list[Document]) -> list[Document]:
-    """Chunk pages so each piece fits comfortably in the LLM prompt."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
@@ -78,11 +71,6 @@ def group_by_source(docs: list[Document]) -> dict[str, list[Document]]:
 
 
 def make_digest(pages: list[Document], budget: int) -> str:
-    """Evenly sample a long document so the whole thing fits in `budget` characters.
-
-    Slide/notes PDFs put headings at the top of each page, so taking the start of
-    every page keeps the structure of the whole document visible to the LLM.
-    """
     if not pages:
         return ""
     per_page = max(200, min(1500, budget // len(pages)))

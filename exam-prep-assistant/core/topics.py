@@ -1,14 +1,3 @@
-"""Main-topic extraction, two ways.
-
-1. Keyphrases (classic NLP, no API key):
-   RAKE-style candidates (stop words and punctuation split the text into phrases)
-   -> TF-IDF weight of each phrase across the document's chunks
-   -> re-rank by embedding similarity to the whole document
-   -> MMR, so the list is not ten versions of the same phrase.
-2. AI topic summary: the LLM reads a digest of the document and returns structured
-   topics through a Pydantic output parser.
-"""
-
 import re
 from collections import Counter
 
@@ -25,8 +14,6 @@ from core.llm import invoke_structured
 from core.preprocess import lemma
 from core.vectorstore import embed
 
-# Words that are common in lecture notes but never a topic on their own:
-# filler words, generic nouns and everyday verbs.
 NOTE_STOP_WORDS = set("""
 use used using uses example examples eg etc ie like also one two three four five first second
 third new way ways make makes made get gets got need needs needed help helps helpful page slide
@@ -47,16 +34,10 @@ generally usually often always sometimes today now still actually able unable le
 """.split())
 STOP_WORDS = ENGLISH_STOP_WORDS | NOTE_STOP_WORDS
 
-# Anything that is not a letter, hyphen or space ends a phrase (punctuation, digits, bullets)
 PHRASE_BREAK_RE = re.compile(r"[^A-Za-z\- ]+|\s-\s")
 
 
 def candidate_phrases(text: str, surface: dict[str, Counter] | None = None) -> list[str]:
-    """RAKE-style: runs of 1-3 content words with no stop word or punctuation inside.
-
-    Each phrase is returned in lemmatized lower case ("Transformers" -> "transformer") so
-    singular/plural forms count as one phrase; `surface` records how it was written.
-    """
     phrases = []
     for segment in PHRASE_BREAK_RE.split(text):
         run: list[str] = []
@@ -76,7 +57,6 @@ def candidate_phrases(text: str, surface: dict[str, Counter] | None = None) -> l
 
 def _mmr(cand_vecs: np.ndarray, relevance: np.ndarray, top_n: int,
          diversity: float = 0.5) -> list[int]:
-    """Maximal Marginal Relevance: pick relevant candidates that differ from ones already picked."""
     chosen = [int(np.argmax(relevance))]
     remaining = [i for i in range(len(relevance)) if i != chosen[0]]
     while remaining and len(chosen) < top_n:
@@ -89,10 +69,6 @@ def _mmr(cand_vecs: np.ndarray, relevance: np.ndarray, top_n: int,
 
 
 def extract_keyphrases(chunks: list[Document], top_n: int = 15) -> list[tuple[str, float]]:
-    """Return [(phrase, score 0-1)] for one document, best first.
-
-    Phrases keep their most common spelling in the notes (e.g. "RNN", "LoRA").
-    """
     texts = [c.page_content for c in chunks if c.page_content.strip()]
     if not texts:
         return []
@@ -101,12 +77,10 @@ def extract_keyphrases(chunks: list[Document], top_n: int = 15) -> list[tuple[st
                                  sublinear_tf=True)
     try:
         tfidf = vectorizer.fit_transform(texts)
-    except ValueError:  # no usable phrases at all
+    except ValueError:
         return []
     vocab = vectorizer.get_feature_names_out()
 
-    # Sum over chunks = how strongly the phrase characterises this document;
-    # multiply by document frequency so one-off phrases don't win.
     weight = np.asarray(tfidf.sum(axis=0)).ravel()
     doc_freq = np.asarray((tfidf > 0).sum(axis=0)).ravel()
     weight *= np.log1p(doc_freq) * np.array([1.0 + 0.3 * p.count(" ") for p in vocab])

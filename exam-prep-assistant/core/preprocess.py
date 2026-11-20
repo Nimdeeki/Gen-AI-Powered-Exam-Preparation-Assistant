@@ -1,8 +1,3 @@
-"""Text preprocessing, following the steps from the class Colab notebook:
-lowercasing -> remove HTML tags -> remove URLs -> remove punctuation ->
-tokenization -> stop-word removal -> stemming / lemmatization.
-"""
-
 import re
 import string
 from functools import lru_cache
@@ -62,7 +57,6 @@ def stem(tokens: list[str]) -> list[str]:
 
 @lru_cache(maxsize=50_000)
 def lemma(word: str) -> str:
-    """Noun lemma first ("transformers" -> "transformer"), then verb ("running" -> "run")."""
     _ensure_nltk_data()
     noun = _lemmatizer.lemmatize(word, pos="n")
     return noun if noun != word else _lemmatizer.lemmatize(word, pos="v")
@@ -73,14 +67,12 @@ def lemmatize(tokens: list[str]) -> list[str]:
 
 
 def preprocess(text: str) -> list[str]:
-    """Full pipeline: returns clean, lemmatized content-word tokens."""
     text = remove_punc(remove_url(remove_html_tags(text.lower())))
     tokens = [t for t in tokenize(text) if t.isalpha() and len(t) > 1]
     return lemmatize(remove_stopwords(tokens))
 
 
 def pipeline_report(text: str) -> dict:
-    """Numbers for every preprocessing step, shown in the app's 'NLP pipeline' view."""
     lowered = text.lower()
     no_html = remove_html_tags(lowered)
     no_url = remove_url(no_html)

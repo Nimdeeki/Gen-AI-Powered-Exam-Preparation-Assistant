@@ -1,21 +1,5 @@
-"""Compare notes with previous-year questions and predict upcoming exam questions.
-
-How it works
-1. Topic inventory: the main topics of every notes PDF (AI topics if available,
-   otherwise TF-IDF keyphrases).
-2. Semantic matching: every PYQ and every notes chunk is embedded; each question is
-   assigned to its closest topic (cosine similarity). Questions far from all notes are
-   reported as "not covered by your notes".
-3. Scoring: topics asked in more years, more recently, for more marks, and with more
-   pages in the notes get a higher priority score. Topics never asked but heavily
-   covered in the notes are flagged as "not asked yet" (surprise candidates).
-4. Generation: the LLM sees this evidence plus notes excerpts and writes new
-   questions in the same style as the real papers.
-"""
-
 from collections import Counter
 from dataclasses import dataclass, field
-
 import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
@@ -30,10 +14,9 @@ from core.pyq import PYQuestion
 from core.topics import DocumentTopics, clean_label
 from core.vectorstore import embed
 
-NOTES_MATCH_MIN = 0.35     # question <-> best notes chunk similarity, else "not in notes"
-STRONG_MATCH = 0.55        # above this the question is covered even if a word is missing
+NOTES_MATCH_MIN = 0.35
+STRONG_MATCH = 0.55
 
-# Words every exam question uses; they say nothing about the topic
 EXAM_WORDS = set("""
 explain describe discuss define write short note notes example examples diagram neat suitable
 differentiate compare difference distinguish brief briefly detail detailed state list mention
@@ -52,7 +35,7 @@ class TopicItem:
 class TopicStats:
     topic: TopicItem
     questions: list[PYQuestion] = field(default_factory=list)
-    coverage: float = 0.0               # share of notes chunks about this topic
+    coverage: float = 0.0
     excerpts: list[Document] = field(default_factory=list)
     score: float = 0.0
     priority: str = "Low"
@@ -68,10 +51,9 @@ class TopicStats:
 
 @dataclass
 class CoverageGap:
-    """A past question your notes do not (fully) cover."""
     question: PYQuestion
-    similarity: float           # best match with any notes chunk
-    missing_terms: list[str]    # question keywords that never appear in the notes
+    similarity: float
+    missing_terms: list[str]
 
 
 @dataclass
@@ -106,7 +88,6 @@ def build_topic_inventory(keyphrases: dict[str, list[tuple[str, float]]],
                 items.append(TopicItem(label[:1].upper() + label[1:], source, phrase))
     if not items:
         return items
-    # Merge near-duplicate topics coming from different PDFs
     vecs = embed([i.embed_text for i in items])
     keep: list[int] = []
     for idx in range(len(items)):
@@ -116,7 +97,6 @@ def build_topic_inventory(keyphrases: dict[str, list[tuple[str, float]]],
 
 
 def _index_matrix(vectorstore: FAISS) -> tuple[np.ndarray, list[Document]]:
-    """Read back the stored chunk vectors so we don't have to embed the notes again."""
     n = vectorstore.index.ntotal
     mat = vectorstore.index.reconstruct_n(0, n)
     docs = [vectorstore.docstore.search(vectorstore.index_to_docstore_id[i]) for i in range(n)]
@@ -128,8 +108,7 @@ def analyse(topics: list[TopicItem], questions: list[PYQuestion], vectorstore: F
     topic_vecs = embed([t.embed_text for t in topics])
     stats = [TopicStats(topic=t) for t in topics]
 
-    # Notes coverage: assign each chunk to its nearest topic
-    chunk_topic_sim = chunk_vecs @ topic_vecs.T                  # (chunks, topics)
+    chunk_topic_sim = chunk_vecs @ topic_vecs.T
     nearest = chunk_topic_sim.argmax(axis=1)
     counts = np.bincount(nearest, minlength=len(topics))
     for i, s in enumerate(stats):
@@ -137,9 +116,6 @@ def analyse(topics: list[TopicItem], questions: list[PYQuestion], vectorstore: F
         best_chunks = np.argsort(-chunk_topic_sim[:, i])[:2]
         s.excerpts = [chunks[j] for j in best_chunks]
 
-    # Match each question to a topic. A question is a "gap" when it is far from every
-    # notes chunk (embeddings), or when its keywords are missing from the notes
-    # vocabulary (classic preprocessing: tokenize -> stop words -> lemmatize).
     gaps: list[CoverageGap] = []
     if questions:
         notes_vocab = set()
@@ -176,7 +152,7 @@ def _score(stats: list[TopicStats], years: list[int]) -> None:
     for s in stats:
         cov = s.coverage / max_cov
         if not s.questions:
-            s.score = 0.35 * cov                  # never asked: rank by how much the notes cover it
+            s.score = 0.35 * cov
         else:
             freq = len(s.years) / len(years) if years else len(s.questions) / max_count
             recency = max((0.6 ** (latest - y) for y in s.years), default=0.5) if latest else 0.5
@@ -226,7 +202,6 @@ PREDICT_PROMPT = ChatPromptTemplate.from_messages([
      "{format_instructions}"),
 ])
 
-# Models often stop short of the requested count; this asks for the rest.
 TOP_UP_PROMPT = ChatPromptTemplate.from_messages([
     PREDICT_PROMPT.messages[0],
     ("human",
@@ -304,7 +279,7 @@ def predict_questions(llm: BaseChatModel, analysis: Analysis, n: int = 10,
                                      {**inputs, "n": missing, "existing": existing})
             paper.questions += more.questions[:missing]
         except Exception:
-            pass  # keep the questions we already have
+            pass
     paper.questions = paper.questions[:n]
     return paper
 
