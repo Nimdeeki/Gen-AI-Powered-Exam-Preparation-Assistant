@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from core.chat import StudyChatbot
 from core.config import PROVIDERS
 from core.documents import group_by_source, load_pdf, load_pdfs, split_documents
-from core.llm import get_llm
+from core.llm import call_with_retry, get_llm, is_rate_limit, suggested_wait
 from core.ocr import read_images, scanned_pages, vision_llm
 from core.predictor import analyse, build_topic_inventory, paper_to_markdown, predict_questions
 from core.preprocess import pipeline_report
@@ -120,9 +120,14 @@ def friendly_error(exc: Exception) -> str:
     low = msg.lower()
     if any(k in low for k in ("401", "invalid api key", "api_key", "authentication", "permission")):
         return "The API key was rejected. Check that you pasted the right key for this provider."
-    if any(k in low for k in ("429", "rate limit", "rate_limit", "quota", "resource_exhausted")):
+    if is_rate_limit(exc) or "quota" in low:
+        wait = suggested_wait(exc)
+        when = f" Try again in about {max(1, round(wait / 60))} min." if wait and wait > 90 else ""
+        if "per day" in low or "(tpd)" in low or "(rpd)" in low:
+            return ("The free plan's daily limit for this model is used up." + when +
+                    " Or switch to another provider in the sidebar.")
         return ("The free-tier rate limit was reached. Wait a minute and try again, or pick a "
-                "smaller/faster model in the sidebar.")
+                "smaller/faster model in the sidebar." + when)
     if any(k in low for k in ("503", "over capacity", "overloaded")):
         return ("The AI service is busy right now. Try again in a minute; pages that were "
                 "already read are saved.")
@@ -139,15 +144,19 @@ def badge(text: str, color: str) -> str:
 PRIORITY_COLOR = {"High": "red", "Medium": "orange", "Low": "gray"}
 
 
-def active_llm():
+def active_llm(max_retries: int = 3):
     info = PROVIDERS[S.provider]
     if info["key_env"] and not S.get("api_key"):
         return None
     try:
-        return get_llm(S.provider, S.model, S.get("api_key"))
+        return get_llm(S.provider, S.model, S.get("api_key"), max_retries=max_retries)
     except Exception as exc:
         st.error(friendly_error(exc))
         return None
+
+
+def wait_reason(exc: Exception) -> str:
+    return "free-plan limit" if is_rate_limit(exc) else "service busy"
 
 
 def need_llm_message() -> None:
@@ -206,8 +215,7 @@ def read_scans(name: str, scans: list[tuple[int, bytes]], page_text: dict[int, s
         bar.progress(where["value"], text=where["page"])
 
     def on_wait(seconds: float, exc: Exception) -> None:
-        reason = "free-plan limit" if "429" in str(exc) or "rate" in str(exc).lower() else "service busy"
-        bar.progress(where["value"], text=f"{where['page']} · {reason}, waiting {seconds:.0f} s")
+        bar.progress(where["value"], text=f"{where['page']} · {wait_reason(exc)}, waiting {seconds:.0f} s")
 
     texts = read_images(llm, model, [img for _, img in scans], on_page, on_wait)
     bar.progress(1.0, text="Done")
@@ -381,59 +389,65 @@ with chat_tab:
                     except Exception as exc:
                         st.error(friendly_error(exc))
 
-with topics_tab:
-    left, right = st.columns([2, 1])
-    with right:
-        other = st.file_uploader("Or analyse any other PDF", type="pdf", key="other_pdf",
-                                 help="Only for topics: it is not added to the chat.")
-        if other and other.name not in S.extra and other.name not in S.keyphrases:
-            with st.spinner(f"Reading {other.name}..."):
-                pages = load_pdf(other.name, other.getvalue())
-                chunks = split_documents(pages)
-                S.extra[other.name] = {"pages": pages, "keyphrases": extract_keyphrases(chunks)}
-    names = list(S.keyphrases) + list(S.extra)
-    with left:
-        name = st.selectbox("Document", names,
-                            index=names.index(other.name) if other and other.name in names else 0)
+ALL_DOCS = "All PDFs"
 
+
+def doc_data(name: str):
     if name in S.extra:
-        pages, keyphrases = S.extra[name]["pages"], S.extra[name]["keyphrases"]
-    else:
-        pages, keyphrases = group_by_source(S.pages)[name], S.keyphrases[name]
+        return S.extra[name]["pages"], S.extra[name]["keyphrases"]
+    return group_by_source(S.pages)[name], S.keyphrases[name]
 
-    st.markdown(f"#### {name}")
-    st.caption(f"{len(pages)} pages")
-    st.markdown("**Key phrases** (no AI needed: TF-IDF + sentence embeddings + MMR)")
-    st.markdown(" ".join(badge(p, "blue") for p, _ in keyphrases) or "_none found_")
 
-    st.divider()
-    topics = S.ai_topics.get(name)
-    if st.button("✨ Generate AI topic summary" if not topics else "🔄 Regenerate AI topic summary",
-                 type="primary" if not topics else "secondary"):
-        llm = active_llm()
-        if llm is None:
-            need_llm_message()
-        else:
-            try:
-                with st.spinner("Reading the document and listing its main topics..."):
-                    S.ai_topics[name] = summarize_topics(llm, name, pages, keyphrases)
-                st.rerun()
-            except Exception as exc:
-                st.error(friendly_error(exc))
-
-    if topics:
-        st.markdown(f"**Overview.** {topics.overview}")
-        for i, t in enumerate(topics.main_topics, 1):
-            with st.container(border=True):
-                level = t.importance.strip().title()
-                st.markdown(f"**{i}. {t.title}** {badge(level, PRIORITY_COLOR.get(level, 'gray'))}")
-                st.write(t.summary)
-                if t.subtopics:
-                    st.caption(" · ".join(t.subtopics))
+def show_topics(name: str, topics, download: bool = True) -> None:
+    st.markdown(f"**Overview.** {topics.overview}")
+    for i, t in enumerate(topics.main_topics, 1):
+        with st.container(border=True):
+            level = t.importance.strip().title()
+            st.markdown(f"**{i}. {t.title}** {badge(level, PRIORITY_COLOR.get(level, 'gray'))}")
+            st.write(t.summary)
+            if t.subtopics:
+                st.caption(" · ".join(t.subtopics))
+    if download:
         st.download_button("Download topics (.md)", topics_to_markdown(name, topics),
-                           file_name=f"{os.path.splitext(name)[0]}_topics.md")
+                           file_name=f"{os.path.splitext(name)[0]}_topics.md", key=f"dl::{name}")
 
-    with st.expander("🔬 NLP pipeline view (what preprocessing does to this document)"):
+
+def summarize_with_retry(llm, name: str, pages, keyphrases, bar, value: float, step: str):
+    def on_wait(seconds: float, exc: Exception) -> None:
+        bar.progress(value, text=f"{step} · {wait_reason(exc)}, waiting {seconds:.0f} s")
+    return call_with_retry(lambda: summarize_topics(llm, name, pages, keyphrases), on_wait)
+
+
+def generate_topics(names: list[str]) -> None:
+    llm = active_llm(max_retries=0)
+    if llm is None:
+        need_llm_message()
+        return
+    if S.provider.startswith("Groq") and len(names) > 2:
+        st.caption("Groq's free plan limits how many words the AI can read per minute, so the "
+                   "app may pause between PDFs. This can take a few minutes; don't change "
+                   "anything on the page until it finishes.")
+    bar = st.progress(0.0)
+    failed = []
+    for i, n in enumerate(names):
+        step = f"Reading {n} ({i + 1} of {len(names)})"
+        bar.progress(i / len(names), text=step)
+        pages, keyphrases = doc_data(n)
+        try:
+            S.ai_topics[n] = summarize_with_retry(llm, n, pages, keyphrases, bar, i / len(names), step)
+        except Exception as exc:
+            failed.append(n)
+            st.error(f"{n}: {friendly_error(exc)}")
+    bar.progress(1.0, text="Done")
+    if failed:
+        st.warning(f"Made {len(names) - len(failed)} of {len(names)} summaries. Click the button "
+                   "again later to make the missing ones; the finished ones are kept.")
+    else:
+        st.rerun()
+
+
+def pipeline_view(pages, rows, columns: list[str], what: str) -> None:
+    with st.expander(f"🔬 NLP pipeline view (what preprocessing does to {what})"):
         report = pipeline_report("\n".join(p.page_content for p in pages))
         c = st.columns(4)
         c[0].metric("Tokens", f"{report['tokens']:,}")
@@ -447,9 +461,78 @@ with topics_tab:
                                   columns=["Word", "Porter stem", "WordNet lemma"]),
                      hide_index=True)
         st.markdown("**Key phrase scores**")
-        st.dataframe(pd.DataFrame(keyphrases, columns=["Phrase", "Score"]), hide_index=True,
+        st.dataframe(pd.DataFrame(rows, columns=columns), hide_index=True,
                      column_config={"Score": st.column_config.ProgressColumn(min_value=0, max_value=1,
                                                                              format="%.2f")})
+
+
+def show_one(name: str) -> None:
+    pages, keyphrases = doc_data(name)
+    st.markdown(f"#### {name}")
+    st.caption(f"{len(pages)} pages")
+    st.markdown("**Key phrases** (no AI needed: TF-IDF + sentence embeddings + MMR)")
+    st.markdown(" ".join(badge(p, "blue") for p, _ in keyphrases) or "_none found_")
+    st.divider()
+    topics = S.ai_topics.get(name)
+    if st.button("✨ Generate AI topic summary" if not topics else "🔄 Regenerate AI topic summary",
+                 type="primary" if not topics else "secondary", key=f"gen::{name}"):
+        generate_topics([name])
+    if topics:
+        show_topics(name, topics)
+    pipeline_view(pages, keyphrases, ["Phrase", "Score"], "this document")
+
+
+def show_all(names: list[str]) -> None:
+    all_pages = [p for n in names for p in doc_data(n)[0]]
+    st.markdown(f"#### All PDFs ({len(names)})")
+    st.caption(f"{len(all_pages)} pages in total. Key phrases need no AI "
+               "(TF-IDF + sentence embeddings + MMR).")
+    missing = [n for n in names if n not in S.ai_topics]
+    if not missing:
+        label = "🔄 Regenerate all AI topic summaries"
+    elif len(missing) == len(names):
+        label = f"✨ Generate AI topic summaries for all {len(names)} PDFs"
+    else:
+        label = f"✨ Generate the {len(missing)} missing AI topic summaries"
+    if st.button(label, type="primary" if missing else "secondary", key="gen::all"):
+        generate_topics(missing or names)
+    for n in names:
+        pages, keyphrases = doc_data(n)
+        with st.container(border=True):
+            st.markdown(f"**{n}** · {len(pages)} pages")
+            st.markdown(" ".join(badge(p, "blue") for p, _ in keyphrases) or "_none found_")
+            topics = S.ai_topics.get(n)
+            if topics:
+                with st.expander(f"AI topic summary: {len(topics.main_topics)} topics"):
+                    show_topics(n, topics, download=False)
+    done = [n for n in names if n in S.ai_topics]
+    if done:
+        st.download_button("Download all topics (.md)",
+                           "\n\n".join(topics_to_markdown(n, S.ai_topics[n]) for n in done),
+                           file_name="all_topics.md", key="dl::all")
+    rows = [(n, p, s) for n in names for p, s in doc_data(n)[1]]
+    pipeline_view(all_pages, rows, ["Document", "Phrase", "Score"], "these documents")
+
+
+with topics_tab:
+    left, right = st.columns([2, 1])
+    with right:
+        other = st.file_uploader("Or analyse any other PDF", type="pdf", key="other_pdf",
+                                 help="Only for topics: it is not added to the chat.")
+        if other and other.name not in S.extra and other.name not in S.keyphrases:
+            with st.spinner(f"Reading {other.name}..."):
+                pages = load_pdf(other.name, other.getvalue())
+                chunks = split_documents(pages)
+                S.extra[other.name] = {"pages": pages, "keyphrases": extract_keyphrases(chunks)}
+    names = list(S.keyphrases) + list(S.extra)
+    options = ([ALL_DOCS] if len(names) > 1 else []) + names
+    with left:
+        name = st.selectbox("Document", options,
+                            index=options.index(other.name) if other and other.name in options else 0)
+    if name == ALL_DOCS:
+        show_all(names)
+    else:
+        show_one(name)
 
 with predict_tab:
     st.markdown("Compares your notes with previous year questions (PYQs): which topics "
@@ -492,12 +575,16 @@ with predict_tab:
                 by_src = group_by_source(S.pages)
                 todo = [s for s in S.keyphrases if s not in S.ai_topics]
                 bar = st.progress(0.0, text="Listing topics in your notes...")
+                topic_llm = active_llm(max_retries=0)
                 for i, src in enumerate(todo, 1):
+                    step = f"Listing topics for {src} ({i} of {len(todo)})"
+                    bar.progress((i - 1) / len(todo), text=step)
                     try:
-                        S.ai_topics[src] = summarize_topics(llm, src, by_src[src], S.keyphrases[src])
+                        S.ai_topics[src] = summarize_with_retry(topic_llm, src, by_src[src],
+                                                                S.keyphrases[src], bar,
+                                                                (i - 1) / len(todo), step)
                     except Exception as exc:
                         st.warning(f"Using key phrases for {src}: {friendly_error(exc)}")
-                    bar.progress(i / len(todo), text=f"Listed topics for {i}/{len(todo)} PDFs")
                 bar.empty()
             ai = S.ai_topics if use_ai_topics else {}
             with st.spinner("Matching past questions to your notes..."):

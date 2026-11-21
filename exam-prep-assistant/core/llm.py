@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from functools import lru_cache
 
 from langchain_core.language_models import BaseChatModel
@@ -8,18 +9,27 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 
+RATE_WORDS = ("429", "rate limit", "rate_limit", "resource_exhausted")
+BUSY_WORDS = ("500", "502", "503", "504", "over capacity", "overloaded", "unavailable",
+              "timed out", "timeout")
+MAX_WAIT = 90
+ATTEMPTS = 6
+
+
 def get_llm(provider: str, model: str, api_key: str | None = None,
-            temperature: float = 0.3) -> BaseChatModel:
+            temperature: float = 0.3, max_retries: int = 3) -> BaseChatModel:
     if provider.startswith("Groq"):
         from langchain_groq import ChatGroq
-        return ChatGroq(model=model, api_key=api_key, temperature=temperature, max_retries=3)
+        return ChatGroq(model=model, api_key=api_key, temperature=temperature,
+                        max_retries=max_retries)
     if provider.startswith("Google"):
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(model=model, google_api_key=api_key,
-                                      temperature=temperature, max_retries=3)
+                                      temperature=temperature, max_retries=max_retries)
     if provider.startswith("OpenAI"):
         from langchain_openai import ChatOpenAI
-        return ChatOpenAI(model=model, api_key=api_key, temperature=temperature, max_retries=3)
+        return ChatOpenAI(model=model, api_key=api_key, temperature=temperature,
+                          max_retries=max_retries)
     if provider.startswith("Hugging Face"):
         return _local_hf_llm(model)
     raise ValueError(f"Unknown provider: {provider}")
@@ -64,3 +74,43 @@ def invoke_structured(llm: BaseChatModel, prompt: ChatPromptTemplate,
             return schema.model_validate(json.loads(_extract_json(fixed)))
         except Exception as exc:
             raise ValueError(f"The model did not return valid structured output.\n\n{raw}") from exc
+
+
+def is_rate_limit(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(k in msg for k in RATE_WORDS)
+
+
+def suggested_wait(exc: Exception) -> float | None:
+    m = re.search(r"(?:try again|retry) in\s+(?:(\d+)h)?(?:(\d+)m(?!s))?(?:([\d.]+)(ms|s)\b)?",
+                  str(exc).lower())
+    if not m or not any(m.groups()):
+        return None
+    hours, minutes, amount, unit = m.groups()
+    seconds = float(amount or 0) / (1000 if unit == "ms" else 1)
+    return int(hours or 0) * 3600 + int(minutes or 0) * 60 + seconds
+
+
+def retry_wait(exc: Exception, attempt: int) -> float | None:
+    if is_rate_limit(exc):
+        wait = suggested_wait(exc)
+        if wait is None:
+            return 20.0
+        return wait if wait <= MAX_WAIT else None
+    if any(k in str(exc).lower() for k in BUSY_WORDS):
+        return min(5.0 * 2 ** attempt, 40.0)
+    return None
+
+
+def call_with_retry(fn, on_wait=None, attempts: int = ATTEMPTS):
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except Exception as exc:
+            wait = retry_wait(exc, attempt)
+            if wait is None or attempt == attempts - 1:
+                raise
+            wait = min(wait + 1, MAX_WAIT)
+            if on_wait:
+                on_wait(wait, exc)
+            time.sleep(wait)
