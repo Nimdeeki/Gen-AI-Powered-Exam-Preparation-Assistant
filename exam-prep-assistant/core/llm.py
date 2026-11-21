@@ -1,3 +1,10 @@
+"""One function that returns a LangChain chat model for any provider.
+
+This is LangChain's main selling point from class: the rest of the app calls
+`llm.invoke(...)` the same way whether the model is Groq, Gemini, OpenAI or a
+local Hugging Face model.
+"""
+
 import json
 import re
 import time
@@ -37,6 +44,7 @@ def get_llm(provider: str, model: str, api_key: str | None = None,
 
 @lru_cache(maxsize=1)
 def _local_hf_llm(model_id: str) -> BaseChatModel:
+    """Runs a small open model on your own laptop. Slow, but needs no API key."""
     from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
     pipe = HuggingFacePipeline.from_model_id(
         model_id=model_id,
@@ -48,6 +56,7 @@ def _local_hf_llm(model_id: str) -> BaseChatModel:
 
 
 def _extract_json(text: str) -> str:
+    """Pull the JSON object out of a reply that may be wrapped in ```json fences or prose."""
     fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.S)
     if fenced:
         return fenced.group(1)
@@ -57,6 +66,11 @@ def _extract_json(text: str) -> str:
 
 def invoke_structured(llm: BaseChatModel, prompt: ChatPromptTemplate,
                       schema: type[BaseModel], inputs: dict) -> BaseModel:
+    """prompt | llm | PydanticOutputParser, with one automatic repair attempt.
+
+    Small or free models sometimes return slightly broken JSON; we send the
+    error back once and ask the model to fix it before giving up.
+    """
     parser = PydanticOutputParser(pydantic_object=schema)
     inputs = {**inputs, "format_instructions": parser.get_format_instructions()}
     raw = (prompt | llm).invoke(inputs).content
